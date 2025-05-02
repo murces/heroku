@@ -6,8 +6,8 @@ import os
 app = Flask(__name__)
 
 # Binance API anahtarları
-binance_api_key = "J6bPS62SQXaQiEn8qHkGpXTMHGm9Go7ZpVrMHzwNBBQOjvTjjuClX54JjrxjrpI0"
-binance_api_secret = "xITUWsEJITJVIUk2H5fVlEs97Ws3xj1FzmBZhUaoo5U5roOi9gLCPYqGFolKgEMj"
+binance_api_key = J6bPS62SQXaQiEn8qHkGpXTMHGm9Go7ZpVrMHzwNBBQOjvTjjuClX54JjrxjrpI0
+binance_api_secret = xITUWsEJITJVIUk2H5fVlEs97Ws3xj1FzmBZhUaoo5U5roOi9gLCPYqGFolKgEMj
 client = Client(binance_api_key, binance_api_secret)
 
 # Binance Futures ayarları
