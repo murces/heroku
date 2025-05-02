@@ -5,30 +5,35 @@ import os
 
 app = Flask(__name__)
 
-# Binance API anahtarları
-binance_api_key = J6bPS62SQXaQiEn8qHkGpXTMHGm9Go7ZpVrMHzwNBBQOjvTjjuClX54JjrxjrpI0
-binance_api_secret = xITUWsEJITJVIUk2H5fVlEs97Ws3xj1FzmBZhUaoo5U5roOi9gLCPYqGFolKgEMj
-client = Client(binance_api_key, binance_api_secret)
+# Binance API anahtarlarını ortam değişkenlerinden al
+binance_api_key = os.getenv("BINANCE_API_KEY", "YOUR_API_KEY")
+binance_api_secret = os.getenv("BINANCE_API_SECRET", "YOUR_API_SECRET")
 
-# Binance Futures ayarları
-symbol = "BTCUSDT"
-client.futures_change_position_mode(dualSidePosition=True)  # Hedge Mode etkin
+# Client'ı başlat
+try:
+    client = Client(binance_api_key, binance_api_secret)
+    client.futures_change_position_mode(dualSidePosition=True)  # Hedge Mode etkin
+except Exception as e:
+    print(f"Binance client hatası: {str(e)}")
+    raise  # Hatayı loglara yaz ve uygulamayı çökert
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    data = json.loads(request.data)
-    
-    action = data['action']  # buy, sell, close_all
-    symbol = data['symbol']
-    quantity = float(data['quantity']) if 'quantity' in data else 0
-    label = data['label'] if 'label' in data else ""
-    kademe = int(data['kademe'])
-    reason = data['reason'] if 'reason' in data else ""
-
     try:
+        data = request.get_json()  # JSON verisini al
+        if not data:
+            return {"status": "error", "message": "No JSON data received"}, 400
+
+        action = data.get('action')  # buy, sell, close_all
+        symbol = data.get('symbol', "BTCUSDT")
+        quantity = float(data.get('quantity', 0))
+        label = data.get('label', "")
+        kademe = int(data.get('kademe', 0))
+        reason = data.get('reason', "")
+
         # USDT miktarını coin miktarına çevir
         price = float(client.get_symbol_ticker(symbol=symbol)['price'])
-        coin_quantity = round(quantity / price, 3)  # Ör: 100 USDT / 50,000 USDT/BTC = 0.002 BTC
+        coin_quantity = round(quantity / price, 3)
 
         # Bakiye kontrolü
         balance = float(client.futures_account()['availableBalance'])
@@ -36,7 +41,6 @@ def webhook():
             raise Exception(f"Yetersiz bakiye: Gerekli {quantity} USDT, Mevcut {balance} USDT")
 
         if action == 'buy':
-            # Long pozisyon aç
             order = client.futures_create_order(
                 symbol=symbol,
                 side=Client.SIDE_BUY,
@@ -47,7 +51,6 @@ def webhook():
             print(f"Long pozisyon açıldı: {label}, Miktar: {coin_quantity}, Kademe: {kademe}")
         
         elif action == 'sell':
-            # Short pozisyon aç
             order = client.futures_create_order(
                 symbol=symbol,
                 side=Client.SIDE_SELL,
@@ -58,7 +61,6 @@ def webhook():
             print(f"Short pozisyon açıldı: {label}, Miktar: {coin_quantity}, Kademe: {kademe}")
         
         elif action == 'close_all':
-            # Long pozisyonları kapat
             positions = client.futures_position_information(symbol=symbol)
             for position in positions:
                 position_amount = float(position['positionAmt'])
