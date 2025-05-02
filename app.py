@@ -5,16 +5,28 @@ import os
 
 app = Flask(__name__)
 
+# Başlangıç loglaması
+print("Uygulama başlatılıyor...")
+
 # Binance API anahtarlarını ortam değişkenlerinden al
 binance_api_key = os.getenv("BINANCE_API_KEY", "YOUR_API_KEY")
 binance_api_secret = os.getenv("BINANCE_API_SECRET", "YOUR_API_SECRET")
+print(f"API Key: {binance_api_key[:5]}... (gizlilik için kısaltıldı)")
+print(f"API Secret: {binance_api_secret[:5]}... (gizlilik için kısaltıldı)")
 
-# Client'ı başlat
+# Testnet için client'ı başlat
 try:
-    client = Client(binance_api_key, binance_api_secret)
-    client.futures_change_position_mode(dualSidePosition=True)  # Hedge Mode etkin
+    print("Binance client başlatılıyor...")
+    client = Client(binance_api_key, binance_api_secret, testnet=True)
+    print("Binance client başarıyla başlatıldı.")
+    # Hedge Mode'u etkinleştir (hata olsa bile uygulama çökmesin)
+    try:
+        client.futures_change_position_mode(dualSidePosition=True)
+        print("Hedge Mode etkinleştirildi.")
+    except Exception as e:
+        print(f"Hedge Mode ayarı yapılamadı: {str(e)}")
 except Exception as e:
-    print(f"Binance client hatası: {str(e)}")
+    print(f"Binance client başlatılamadı: {str(e)}")
     raise  # Hatayı loglara yaz ve uygulamayı çökert
 
 @app.route('/webhook', methods=['POST'])
@@ -30,6 +42,8 @@ def webhook():
         label = data.get('label', "")
         kademe = int(data.get('kademe', 0))
         reason = data.get('reason', "")
+
+        print(f"Webhook alındı: action={action}, symbol={symbol}, quantity={quantity}")
 
         # USDT miktarını coin miktarına çevir
         price = float(client.get_symbol_ticker(symbol=symbol)['price'])
@@ -87,8 +101,14 @@ def webhook():
 
         return {"status": "success", "message": f"Emir gönderildi: {action}"}, 200
     except Exception as e:
+        print(f"Webhook işlenirken hata: {str(e)}")
         return {"status": "error", "message": str(e)}, 400
+
+@app.route('/')
+def health_check():
+    return {"status": "success", "message": "Uygulama çalışıyor!"}
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    print(f"Sunucu {port} portunda başlatılıyor...")
     app.run(host='0.0.0.0', port=port)
