@@ -14,17 +14,19 @@ binance_api_secret = os.getenv("BINANCE_API_SECRET", "YOUR_API_SECRET")
 print(f"API Key: {binance_api_key[:5]}... (gizlilik için kısaltıldı)")
 print(f"API Secret: {binance_api_secret[:5]}... (gizlilik için kısaltıldı)")
 
-# Testnet için client'ı başlat
+# Gerçek hesap (mainnet) için client'ı başlat
 try:
     print("Binance client başlatılıyor...")
-    client = Client(binance_api_key, binance_api_secret, testnet=True)
+    client = Client(binance_api_key, binance_api_secret)  # testnet=True kaldırıldı
     print("Binance client başarıyla başlatıldı.")
-    # Hedge Mode'u etkinleştir (hata olsa bile uygulama çökmesin)
+
+    # Futures API bağlantısını test et
     try:
-        client.futures_change_position_mode(dualSidePosition=True)
-        print("Hedge Mode etkinleştirildi.")
+        account_info = client.futures_account()
+        print("Futures API bağlantısı başarılı: Hesap bilgisi alındı.")
     except Exception as e:
-        print(f"Hedge Mode ayarı yapılamadı: {str(e)}")
+        print(f"Futures API bağlantı testi başarısız: {str(e)}")
+        raise
 except Exception as e:
     print(f"Binance client başlatılamadı: {str(e)}")
     raise  # Hatayı loglara yaz ve uygulamayı çökert
