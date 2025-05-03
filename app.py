@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import os
+import json  # json modülünü ekledik
 from binance.client import Client
 from binance.enums import *
 
