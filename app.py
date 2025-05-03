@@ -9,8 +9,8 @@ app = Flask(__name__)
 binance_api_key = os.getenv("BINANCE_API_KEY", "YOUR_API_KEY")
 binance_api_secret = os.getenv("BINANCE_API_SECRET", "YOUR_API_SECRET")
 
-# Binance Futures istemcisi
-client = Client(binance_api_key, binance_api_secret, tld='com', testnet=True)
+# Binance Futures istemcisi (gerçek mod)
+client = Client(binance_api_key, binance_api_secret, tld='com', testnet=False)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
