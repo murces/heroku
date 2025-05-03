@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
-import ccxt
 import os
+from binance.client import Client
+from binance.enums import *
 
 app = Flask(__name__)
 
@@ -8,19 +9,13 @@ app = Flask(__name__)
 binance_api_key = os.getenv("BINANCE_API_KEY", "YOUR_API_KEY")
 binance_api_secret = os.getenv("BINANCE_API_SECRET", "YOUR_API_SECRET")
 
-exchange = ccxt.binance({
-    'apiKey': binance_api_key,
-    'secret': binance_api_secret,
-    'enableRateLimit': True,
-    'options': {
-        'defaultType': 'future'  # Futures için
-    }
-})
+# Binance Futures istemcisi
+client = Client(binance_api_key, binance_api_secret, tld='com', testnet=True)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        # Ham veriyi al ve JSON’a dönüştür (Content-Type kontrolü olmadan)
+        # Ham veriyi al ve JSON’a dönüştür
         data = request.get_data().decode('utf-8')
         webhook_data = json.loads(data)
 
@@ -34,19 +29,33 @@ def webhook():
         print(f"Webhook alındı: action={action}, symbol={symbol}, quantity={quantity}")
 
         if action == "buy":
-            order = exchange.create_market_buy_order(symbol, quantity)
+            order = client.create_order(
+                symbol=symbol,
+                side=SIDE_BUY,
+                type=ORDER_TYPE_MARKET,
+                quantity=quantity
+            )
             print(f"Buy order placed: {order}")
         elif action == "sell":
-            order = exchange.create_market_sell_order(symbol, quantity)
+            order = client.create_order(
+                symbol=symbol,
+                side=SIDE_SELL,
+                type=ORDER_TYPE_MARKET,
+                quantity=quantity
+            )
             print(f"Sell order placed: {order}")
         elif action == "close_all":
-            positions = exchange.fetch_positions([symbol])
-            for position in positions:
-                if position['info']['positionAmt'] != '0':
-                    if float(position['info']['positionAmt']) > 0:
-                        exchange.create_market_sell_order(symbol, abs(float(position['info']['positionAmt'])))
-                    else:
-                        exchange.create_market_buy_order(symbol, abs(float(position['info']['positionAmt'])))
+            account_info = client.futures_account()
+            for position in account_info['positions']:
+                if float(position['positionAmt']) != 0:
+                    side = SIDE_SELL if float(position['positionAmt']) > 0 else SIDE_BUY
+                    quantity = abs(float(position['positionAmt']))
+                    order = client.create_order(
+                        symbol=symbol,
+                        side=side,
+                        type=ORDER_TYPE_MARKET,
+                        quantity=quantity
+                    )
             print(f"All positions closed for {symbol}")
 
         return jsonify({"status": "success"}), 200
