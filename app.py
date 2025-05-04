@@ -30,10 +30,11 @@ def webhook():
 
         # Sembol doğrulama
         try:
-            client.get_symbol_info(symbol)
+            symbol_info = client.get_symbol_info(symbol)
+            print(f"Symbol info: {symbol_info}")  # Sembol bilgilerini logla
         except Exception as e:
-            print(f"Geçersiz sembol: {symbol}")
-            return jsonify({"error": f"Geçersiz sembol: {symbol}"}), 400
+            print(f"Geçersiz sembol: {symbol}, hata: {str(e)}")
+            return jsonify({"error": f"Geçersiz sembol: {symbol}, hata: {str(e)}"}), 400
 
         # Mevcut fiyatı al
         ticker = client.get_symbol_ticker(symbol=symbol)
@@ -41,10 +42,10 @@ def webhook():
 
         # USDT miktarını coin adedine çevir
         quantity = usdt_quantity / price
-        # Quantity'yi sembole göre hassasiyete yuvarla
-        symbol_info = client.get_symbol_info(symbol)
-        quantity_precision = symbol_info['quantityPrecision']
-        quantity = round(quantity, quantity_precision)
+        # quantityPrecision yerine stepSize kullanarak hassasiyeti hesapla
+        step_size = float(symbol_info['filters'][0]['stepSize'])  # İlk filter genellikle lot size filtresi
+        precision = int(round(-math.log10(step_size), 0)) if step_size else 8  # stepSize’a göre hassasiyet
+        quantity = round(quantity, precision)
 
         print(f"Webhook alındı: action={action}, symbol={symbol}, usdt_quantity={usdt_quantity}, coin_quantity={quantity}, price={price}")
 
