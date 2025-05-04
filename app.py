@@ -37,12 +37,19 @@ def webhook():
             print(f"Geçersiz sembol: {symbol}, hata: {str(e)}")
             return jsonify({"error": f"Geçersiz sembol: {symbol}, hata: {str(e)}"}), 400
 
-        # Mevcut fiyatı al (log için, artık çevirme yapmıyoruz)
+        # Mevcut fiyatı al (log için)
         ticker = client.get_symbol_ticker(symbol=symbol)
         price = float(ticker['price'])
 
-        # Quantity'yi sembole göre hassasiyete yuvarla
-        step_size = float(symbol_info['filters'][2]['stepSize'])  # Lot size filtresi genellikle 2. index
+        # stepSize'ı doğru filtreden al
+        step_size = None
+        for filter_info in symbol_info['filters']:
+            if filter_info.get('filterType') == 'LOT_SIZE':
+                step_size = float(filter_info.get('stepSize', 1.0))
+                break
+        if not step_size:
+            print("stepSize bulunamadı, varsayılan 1.0 kullanılıyor")
+            step_size = 1.0
         precision = int(round(-math.log10(step_size), 0)) if step_size else 8  # stepSize’a göre hassasiyet
         quantity = round(quantity, precision)
 
