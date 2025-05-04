@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import os
-import json  # json modülünü ekledik
+import json
 from binance.client import Client
 from binance.enums import *
 
@@ -16,8 +16,13 @@ client = Client(binance_api_key, binance_api_secret, tld='com', testnet=False)
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        # Ham veriyi al ve JSON’a dönüştür
+        # Ham veriyi al
         data = request.get_data().decode('utf-8')
+        if not data:
+            print("Webhook verisi boş")
+            return jsonify({"error": "Boş veri alındı"}), 400
+
+        # JSON’a dönüştür
         webhook_data = json.loads(data)
 
         action = webhook_data.get('action')
@@ -60,6 +65,9 @@ def webhook():
             print(f"All positions closed for {symbol}")
 
         return jsonify({"status": "success"}), 200
+    except json.JSONDecodeError as e:
+        print(f"Webhook verisi geçersiz JSON formatında: {str(e)}")
+        return jsonify({"error": "Geçersiz JSON formatı"}), 400
     except Exception as e:
         print(f"Webhook işlenirken hata: {str(e)}")
         return jsonify({"error": str(e)}), 400
