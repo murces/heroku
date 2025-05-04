@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 import json
+import math
 from binance.client import Client
 from binance.enums import *
 
@@ -23,7 +24,7 @@ def webhook():
 
         action = webhook_data.get('action')
         symbol = webhook_data.get('symbol')
-        usdt_quantity = float(webhook_data.get('quantity', 0))  # USDT cinsinden miktar
+        quantity = float(webhook_data.get('quantity', 0))  # Doğrudan coin adedi
         label = webhook_data.get('label')
         kademe = webhook_data.get('kademe')
         reason = webhook_data.get('reason')
@@ -36,18 +37,16 @@ def webhook():
             print(f"Geçersiz sembol: {symbol}, hata: {str(e)}")
             return jsonify({"error": f"Geçersiz sembol: {symbol}, hata: {str(e)}"}), 400
 
-        # Mevcut fiyatı al
+        # Mevcut fiyatı al (log için, artık çevirme yapmıyoruz)
         ticker = client.get_symbol_ticker(symbol=symbol)
         price = float(ticker['price'])
 
-        # USDT miktarını coin adedine çevir
-        quantity = usdt_quantity / price
-        # quantityPrecision yerine stepSize kullanarak hassasiyeti hesapla
-        step_size = float(symbol_info['filters'][0]['stepSize'])  # İlk filter genellikle lot size filtresi
+        # Quantity'yi sembole göre hassasiyete yuvarla
+        step_size = float(symbol_info['filters'][2]['stepSize'])  # Lot size filtresi genellikle 2. index
         precision = int(round(-math.log10(step_size), 0)) if step_size else 8  # stepSize’a göre hassasiyet
         quantity = round(quantity, precision)
 
-        print(f"Webhook alındı: action={action}, symbol={symbol}, usdt_quantity={usdt_quantity}, coin_quantity={quantity}, price={price}")
+        print(f"Webhook alındı: action={action}, symbol={symbol}, coin_quantity={quantity}, price={price}")
 
         if action == "buy":
             order = client.create_order(
