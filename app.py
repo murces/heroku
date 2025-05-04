@@ -6,33 +6,47 @@ from binance.enums import *
 
 app = Flask(__name__)
 
-# Binance API kimlik bilgileri (environment variables ile)
 binance_api_key = os.getenv("BINANCE_API_KEY", "YOUR_API_KEY")
 binance_api_secret = os.getenv("BINANCE_API_SECRET", "YOUR_API_SECRET")
 
-# Binance Futures istemcisi (gerçek mod)
 client = Client(binance_api_key, binance_api_secret, tld='com', testnet=False)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        # Ham veriyi al
         data = request.get_data().decode('utf-8')
         if not data:
             print("Webhook verisi boş")
             return jsonify({"error": "Boş veri alındı"}), 400
 
-        # JSON’a dönüştür
         webhook_data = json.loads(data)
 
         action = webhook_data.get('action')
         symbol = webhook_data.get('symbol')
-        quantity = float(webhook_data.get('quantity', 0))
+        usdt_quantity = float(webhook_data.get('quantity', 0))  # USDT cinsinden miktar
         label = webhook_data.get('label')
         kademe = webhook_data.get('kademe')
         reason = webhook_data.get('reason')
 
-        print(f"Webhook alındı: action={action}, symbol={symbol}, quantity={quantity}")
+        # Sembol doğrulama
+        try:
+            client.get_symbol_info(symbol)
+        except Exception as e:
+            print(f"Geçersiz sembol: {symbol}")
+            return jsonify({"error": f"Geçersiz sembol: {symbol}"}), 400
+
+        # Mevcut fiyatı al
+        ticker = client.get_symbol_ticker(symbol=symbol)
+        price = float(ticker['price'])
+
+        # USDT miktarını coin adedine çevir
+        quantity = usdt_quantity / price
+        # Quantity'yi sembole göre hassasiyete yuvarla
+        symbol_info = client.get_symbol_info(symbol)
+        quantity_precision = symbol_info['quantityPrecision']
+        quantity = round(quantity, quantity_precision)
+
+        print(f"Webhook alındı: action={action}, symbol={symbol}, usdt_quantity={usdt_quantity}, coin_quantity={quantity}, price={price}")
 
         if action == "buy":
             order = client.create_order(
@@ -41,7 +55,7 @@ def webhook():
                 type=ORDER_TYPE_MARKET,
                 quantity=quantity
             )
-            print(f"Buy order placed: {order}")
+            print(f"Buy order placed (Futures): {order}")
         elif action == "sell":
             order = client.create_order(
                 symbol=symbol,
@@ -49,11 +63,11 @@ def webhook():
                 type=ORDER_TYPE_MARKET,
                 quantity=quantity
             )
-            print(f"Sell order placed: {order}")
+            print(f"Sell order placed (Futures): {order}")
         elif action == "close_all":
             account_info = client.futures_account()
             for position in account_info['positions']:
-                if float(position['positionAmt']) != 0:
+                if float(position['positionAmt']) != 0 and position['symbol'] == symbol:
                     side = SIDE_SELL if float(position['positionAmt']) > 0 else SIDE_BUY
                     quantity = abs(float(position['positionAmt']))
                     order = client.create_order(
@@ -62,7 +76,7 @@ def webhook():
                         type=ORDER_TYPE_MARKET,
                         quantity=quantity
                     )
-            print(f"All positions closed for {symbol}")
+                    print(f"Position closed for {symbol}: {order}")
 
         return jsonify({"status": "success"}), 200
     except json.JSONDecodeError as e:
