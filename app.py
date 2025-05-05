@@ -7,12 +7,10 @@ from binance.enums import *
 
 app = Flask(__name__)
 
-# Binance API anahtarlarını ortam değişkenlerinden al
 binance_api_key = os.getenv("BINANCE_API_KEY", "YOUR_API_KEY")
 binance_api_secret = os.getenv("BINANCE_API_SECRET", "YOUR_API_SECRET")
 
-# Binance client (Futures için de geçerli)
-client = Client(binance_api_key, binance_api_secret, tld='com')
+client = Client(binance_api_key, binance_api_secret, tld='com', testnet=False)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -26,77 +24,86 @@ def webhook():
 
         action = webhook_data.get('action')
         symbol = webhook_data.get('symbol')
-        quantity = float(webhook_data.get('quantity', 0))  # Coin adedi
+        quantity = float(webhook_data.get('quantity', 0))
         label = webhook_data.get('label')
         kademe = webhook_data.get('kademe')
         reason = webhook_data.get('reason')
 
-        # Futures sembol bilgilerini çek
-        exchange_info = client.futures_exchange_info()
-        symbol_info = next((s for s in exchange_info['symbols'] if s['symbol'] == symbol), None)
+        # Sembol doğrulama
+        try:
+            symbol_info = client.futures_exchange_info()
+            valid_symbols = [s['symbol'] for s in symbol_info['symbols']]
+            if symbol not in valid_symbols:
+                raise ValueError("Sembol geçersiz.")
+        except Exception as e:
+            print(f"Geçersiz sembol: {symbol}, hata: {str(e)}")
+            return jsonify({"error": f"Geçersiz sembol: {symbol}, hata: {str(e)}"}), 400
 
-        if not symbol_info:
-            print(f"Geçersiz sembol: {symbol}")
-            return jsonify({"error": f"Geçersiz sembol: {symbol}"}), 400
-
-        # Mevcut futures fiyatı
+        # Mevcut fiyat
         ticker = client.futures_symbol_ticker(symbol=symbol)
         price = float(ticker['price'])
 
-        # stepSize filtre bilgisi
-        step_size = None
-        for filt in symbol_info['filters']:
-            if filt['filterType'] == 'LOT_SIZE':
-                step_size = float(filt['stepSize'])
-                break
-        precision = int(round(-math.log10(step_size), 0)) if step_size else 3
+        # Hassasiyet (stepSize)
+        step_size = 1.0
+        for s in symbol_info['symbols']:
+            if s['symbol'] == symbol:
+                for f in s['filters']:
+                    if f['filterType'] == 'LOT_SIZE':
+                        step_size = float(f['stepSize'])
+                        break
+        precision = int(round(-math.log10(step_size), 0)) if step_size else 8
         quantity = round(quantity, precision)
 
         print(f"Webhook alındı: action={action}, symbol={symbol}, coin_quantity={quantity}, price={price}")
 
-        # (Opsiyonel) Kaldıraç ayarı
-        client.futures_change_leverage(symbol=symbol, leverage=5)
-
-        # İşlem türüne göre emir gönder
+        # BUY → LONG pozisyon
         if action == "buy":
             order = client.futures_create_order(
                 symbol=symbol,
                 side=SIDE_BUY,
                 type=ORDER_TYPE_MARKET,
-                quantity=quantity
+                quantity=quantity,
+                positionSide='LONG'
             )
-            print(f"Buy order placed (Futures): {order}")
+            print(f"Buy LONG order placed: {order}")
 
+        # SELL → SHORT pozisyon
         elif action == "sell":
             order = client.futures_create_order(
                 symbol=symbol,
                 side=SIDE_SELL,
                 type=ORDER_TYPE_MARKET,
-                quantity=quantity
+                quantity=quantity,
+                positionSide='SHORT'
             )
-            print(f"Sell order placed (Futures): {order}")
+            print(f"Sell SHORT order placed: {order}")
 
+        # Tüm pozisyonları kapat
         elif action == "close_all":
+            client.futures_cancel_all_open_orders(symbol=symbol)
             account_info = client.futures_account()
             for position in account_info['positions']:
                 if position['symbol'] == symbol and float(position['positionAmt']) != 0:
-                    close_side = SIDE_SELL if float(position['positionAmt']) > 0 else SIDE_BUY
-                    close_qty = abs(float(position['positionAmt']))
+                    side = SIDE_SELL if float(position['positionAmt']) > 0 else SIDE_BUY
+                    pos_qty = abs(float(position['positionAmt']))
+                    pos_side = 'LONG' if float(position['positionAmt']) > 0 else 'SHORT'
+
                     order = client.futures_create_order(
                         symbol=symbol,
-                        side=close_side,
+                        side=side,
                         type=ORDER_TYPE_MARKET,
-                        quantity=close_qty
+                        quantity=pos_qty,
+                        positionSide=pos_side
                     )
-                    print(f"Pozisyon kapatıldı: {symbol}, Emir: {order}")
+                    print(f"Pozisyon kapatıldı ({pos_side}): {order}")
 
         return jsonify({"status": "success"}), 200
 
     except json.JSONDecodeError as e:
-        print(f"Geçersiz JSON formatı: {str(e)}")
-        return jsonify({"error": "Geçersiz JSON"}), 400
+        print(f"Webhook verisi geçersiz JSON formatında: {str(e)}")
+        return jsonify({"error": "Geçersiz JSON formatı"}), 400
     except Exception as e:
-        print(f"İşlem sırasında hata: {str(e)}")
+        print(f"Webhook işlenirken hata: {str(e)}")
         return jsonify({"error": str(e)}), 400
 
 if __name__ == '__main__':
